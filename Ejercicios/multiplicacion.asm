@@ -1,51 +1,110 @@
 section .data
-    msg db "El resultado es: ", 0
+    msg db "El resultado es: ", 0xA  ; Mensaje con salto de línea
+    msg_len equ $ - msg
 
 section .bss
-    res resb 4
+    res resb 6    ; Para número hasta 65535 + terminador nulo
 
 section .text
     global _start
 
 _start:
-    ; Cargar los números en los registros
-    mov al, 5          ; Primer número (5)
-    mov bl, 10         ; Segundo número (10)
+    ; Cargar números
+    mov al, 5         ; Primer número
+    mov bl, 10        ; Segundo número
 
-    ; Realizar la multiplicación
-    mul bl             ; AX = AL * BL
+    ; Multiplicar AL * BL → resultado en AX
+    mul bl            ; AX = 50
 
-    ; Convertir el resultado a cadena
-    mov ecx, res      ; Dirección de la cadena
-    call PrintInt
+    ; Convertir resultado en AX a cadena
+    mov si, res
+    call PrintInt     ; Almacena cadena decimal en [res]
 
-    ; Mostrar el mensaje
-    mov edx, msg
-    call PrintString
+    ; Imprimir mensaje
+    mov eax, 4        ; sys_write
+    mov ebx, 1        ; stdout
+    mov ecx, msg
+    mov edx, msg_len
+    int 0x80
 
-    ; Mostrar el resultado
-    mov edx, res
-    call PrintString
+    ; Calcular longitud de cadena en res
+    mov ecx, res
+    call StrLen       ; EAX = longitud
+    mov edx, eax
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, res
+    int 0x80
 
-    ; Salir del programa
-    mov eax, 1         ; sys_exit
-    xor ebx, ebx       ; código de salida 0
-    int 0x80           ; llamada al sistema
+    ; Salir
+    mov eax, 1
+    xor ebx, ebx
+    int 0x80
 
-; Función para imprimir una cadena de caracteres
-PrintString:
-    ; Entrada: EDX = dirección de la cadena
-    ; Salida: imprime la cadena en la consola
-    mov eax, 4         ; sys_write
-    mov ebx, 1         ; descriptor de archivo (stdout)
-    mov ecx, edx       ; dirección de la cadena
-    mov edx, [ecx-4]   ; longitud de la cadena
-    int 0x80           ; llamada al sistema
+; ---------------------------
+; Función: PrintInt
+; Entrada: AX = número a convertir
+; Salida: convierte número decimal en [SI]
+PrintInt:
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+
+    mov cx, 0        ; contador de dígitos
+    mov bx, 10       ; divisor
+
+    cmp ax, 0
+    jne .convert
+    mov byte [si], '0'
+    inc si
+    jmp .done
+
+.convert:
+    xor dx, dx
+.reverse_loop:
+    xor dx, dx
+    div bx          ; AX / 10 → AX = cociente, DX = resto
+    add dl, '0'     ; convertir dígito a ASCII
+    push dx
+    inc cx
+    cmp ax, 0
+    jne .reverse_loop
+
+.write_digits:
+    pop dx
+    mov [si], dl
+    inc si
+    loop .write_digits
+
+.done:
+    mov byte [si], 0
+
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
     ret
 
-; Función para imprimir un número entero
-PrintInt:
-    
-    add al, '0'        ; convertir el número a carácter ASCII
-    mov [ecx], al      ; almacenar el carácter en la cadena
+; ---------------------------
+; Función: StrLen
+; Entrada: ECX = dirección de cadena null-terminada
+; Salida: EAX = longitud
+StrLen:
+    push ecx
+    push eax
+
+    xor eax, eax
+.loop:
+    cmp byte [ecx], 0
+    je .end
+    inc ecx
+    inc eax
+    jmp .loop
+
+.end:
+    pop eax
+    pop ecx
     ret

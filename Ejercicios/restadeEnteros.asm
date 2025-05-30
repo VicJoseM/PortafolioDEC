@@ -1,55 +1,114 @@
 section .data
     msg db "El resultado de la resta es: ", 0
+    msg_len equ $ - msg
 
 section .bss
-    res resb 6  ; Espacio para almacenar el resultado como cadena
+    res resb 6      ; Suficiente para "65535" + null (máximo 5 dígitos + terminador nulo)
 
 section .text
     global _start
 
 _start:
-    ; Cargar los números en registros de 16 bits
-    mov ax, 1000h  ; Primer número (4096 en decimal)
-    mov bx, 500h   ; Segundo número (1280 en decimal)
-    mov cx, 200h   ; Tercer número (512 en decimal)
+    ; Cargar números
+    mov ax, 1000h   ; 4096
+    mov bx, 500h    ; 1280
+    mov cx, 200h    ; 512
 
-    ; Realizar la resta: ax - bx - cx
-    sub ax, bx      ; ax = ax - bx
-    sub ax, cx      ; ax = ax - cx
+    ; Resta
+    sub ax, bx      ; AX = 4096 - 1280 = 2816
+    sub ax, cx      ; AX = 2816 - 512  = 2304
 
-    ; Convertir el resultado a cadena
-    mov si, res     ; Dirección de la cadena
+    ; Convertir número a cadena
+    mov si, res     ; dirección donde guardar el número convertido
     call PrintInt
 
-    ; Mostrar el mensaje
-    mov edx, msg
-    call PrintString
+    ; Mostrar mensaje
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, msg
+    mov edx, msg_len
+    int 0x80
 
-    ; Mostrar el resultado
-    mov edx, res
-    call PrintString
+    ; Mostrar resultado
+    ; Primero calculamos la longitud de la cadena (hasta null)
+    mov ecx, res
+    call StrLen
+    mov edx, eax        ; longitud del número convertido
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, res
+    int 0x80
 
-    ; Salir del programa
-    mov eax, 1       ; sys_exit
-    xor ebx, ebx     ; código de salida 0
-    int 0x80         ; llamada al sistema
+    ; Salir
+    mov eax, 1
+    xor ebx, ebx
+    int 0x80
 
-; Función para imprimir una cadena de caracteres
-PrintString:
-    ; Entrada: EDX = dirección de la cadena
-    ; Salida: imprime la cadena en la consola
-    mov eax, 4       ; sys_write
-    mov ebx, 1       ; descriptor de archivo (stdout)
-    mov ecx, edx     ; dirección de la cadena
-    mov edx, [ecx-4] ; longitud de la cadena
-    int 0x80         ; llamada al sistema
+; ---------------------------
+; Función: PrintInt
+; Entrada: AX = número
+; Salida: cadena decimal en [SI], terminada en null
+PrintInt:
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+
+    mov cx, 0          ; contador de dígitos
+    mov bx, 10         ; divisor para obtener cada dígito
+
+    ; Si AX es cero, guardar '0' directamente
+    cmp ax, 0
+    jne .convert
+    mov byte [si], '0'
+    inc si
+    jmp .done
+
+.convert:
+    mov dx, 0
+.reverse_loop:
+    xor dx, dx
+    div bx            ; AX / 10 → AX = cociente, DX = resto
+    add dl, '0'       ; convierte resto a ASCII
+    push dx           ; guarda el carácter en la pila
+    inc cx
+    cmp ax, 0
+    jne .reverse_loop
+
+.write_digits:
+    pop dx
+    mov [si], dl
+    inc si
+    loop .write_digits
+
+.done:
+    mov byte [si], 0  ; terminador nulo
+
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
     ret
 
-; Función para convertir un número entero a cadena y almacenarlo en [SI]
-PrintInt:
-    ; Entrada: AX = número a convertir
-    ; Salida: [SI] = cadena con el número
-    ; (Implementación simplificada; se puede mejorar para manejar números negativos y más de 10 dígitos)
-    add al, '0'      ; convertir el número a carácter ASCII
-    mov [si], al     ; almacenar el carácter en la cadena
+; ---------------------------
+; Función: StrLen
+; Entrada: ECX = dirección de cadena terminada en 0
+; Salida: EAX = longitud (sin contar el terminador)
+StrLen:
+    push ecx
+    push eax
+
+    xor eax, eax
+.next_char:
+    cmp byte [ecx], 0
+    je .done
+    inc ecx
+    inc eax
+    jmp .next_char
+
+.done:
+    pop eax
+    pop ecx
     ret
